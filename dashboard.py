@@ -7,68 +7,62 @@ import dash_bootstrap_components as dbc
 import requests
 
 # ------------------------------------------------------------------------------
-# 1. CONFIGURATION & API SETUP
-# ------------------------------------------------------------------------------
-API_KEY = "YOUR_OPENWEATHERMAP_API_KEY_HERE"  # <--- PASTE YOUR KEY HERE
-CITY = "Male"
-LAT = "4.1755"  # Latitude for Male', Maldives
-LON = "73.5093" # Longitude for Male', Maldives
-
-# ------------------------------------------------------------------------------
-# 2. DATA PROCESSING (LIVE API ONLY)
+# 1. DATA PROCESSING (OPEN-METEO: NO KEY NEEDED)
 # ------------------------------------------------------------------------------
 
 def get_data():
-    # We are now ONLY fetching live forecast data (approx 5 days / 3-hour intervals)
-    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={LAT}&lon={LON}&appid={API_KEY}&units=metric"
+    # Male', Maldives Coordinates
+    lat = 4.1755
+    lon = 73.5093
     
-    forecast_data = []
+    # We ask Open-Meteo for: 
+    # - hourly temperature and rain
+    # - past_days=30 (History)
+    # - forecast_days=7 (Forecast)
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,rain&past_days=30&forecast_days=7&timezone=auto"
+    
     try:
         response = requests.get(url)
         data = response.json()
         
-        if response.status_code == 200:
-            for item in data['list']:
-                forecast_data.append({
-                    'Date': pd.to_datetime(item['dt_txt']),
-                    'Male_Rainfall': item.get('rain', {}).get('3h', 0), # Rain volume for last 3h
-                    'Male_Temperature': item['main']['temp']
-                })
-        else:
-            print(f"API Error: {data.get('message', 'Unknown error')}")
-            
+        # Open-Meteo returns 'hourly' data as separate lists. We align them in a DataFrame.
+        hourly_data = data['hourly']
+        
+        df = pd.DataFrame({
+            'Date': pd.to_datetime(hourly_data['time']),
+            'Male_Temperature': hourly_data['temperature_2m'],
+            'Male_Rainfall': hourly_data['rain']
+        })
+        
+        # Tagging data as Historical vs Forecast
+        # Everything before "now" is history
+        now = pd.Timestamp.now()
+        df['Type'] = df['Date'].apply(lambda x: 'Historical' if x < now else 'Forecast')
+        
+        return df
+
     except Exception as e:
-        print(f"Connection Error: {e}")
+        print(f"Error fetching data: {e}")
+        return pd.DataFrame() # Return empty if error
 
-    df = pd.DataFrame(forecast_data)
-    
-    # Sort just in case
-    if not df.empty:
-        df = df.sort_values(by='Date')
-    
-    return df
-
-# Load Data once on startup
+# Load Data
 df = get_data()
 
 # ------------------------------------------------------------------------------
-# 3. APP SETUP (Light Mode)
+# 2. APP SETUP (Light Mode)
 # ------------------------------------------------------------------------------
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
 
 # ------------------------------------------------------------------------------
-# 4. FIGURE CREATION
+# 3. FIGURE CREATION
 # ------------------------------------------------------------------------------
 
 def create_figure(dataframe):
     if dataframe.empty:
-        return go.Figure().update_layout(
-            title="No Data Available. Please check your API Key.",
-            plot_bgcolor='white'
-        )
+        return go.Figure().update_layout(title="Error loading data. Check internet connection.")
 
-    # Create figure with secondary y-axis (Left: Rain, Right: Temp)
+    # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     # 1. Rainfall (Bar Chart)
@@ -76,7 +70,7 @@ def create_figure(dataframe):
         go.Bar(
             x=dataframe['Date'], 
             y=dataframe['Male_Rainfall'], 
-            name="Rainfall (mm/3h)",
+            name="Rainfall (mm)",
             marker_color='#50C878', # Mint Green
             opacity=0.7
         ),
@@ -89,30 +83,38 @@ def create_figure(dataframe):
             x=dataframe['Date'], 
             y=dataframe['Male_Temperature'], 
             name="Temperature (°C)",
-            line=dict(color='#007BFF', width=3),
-            mode='lines+markers' # Markers added so you can see the 3h points clearly
+            line=dict(color='#007BFF', width=2),
+            mode='lines'
         ),
         secondary_y=True,
     )
 
+    # Visual Marker: Where does Forecast start?
+    # Find the first row where Type is 'Forecast'
+    forecast_df = dataframe[dataframe['Type'] == 'Forecast']
+    if not forecast_df.empty:
+        forecast_start = forecast_df['Date'].iloc[0]
+        fig.add_vline(x=forecast_start, line_width=1, line_dash="dash", line_color="grey")
+        fig.add_annotation(x=forecast_start, y=1.05, yref="paper", text="Forecast Start", showarrow=False)
+
     # Layout Updates
     fig.update_layout(
-        title="Male' Weather Forecast (Next 5 Days)",
+        title="Male' Weather: Last 30 Days + 7 Day Forecast",
         plot_bgcolor='white',
         paper_bgcolor='white',
         font_color='black',
         height=500,
         legend=dict(orientation="h", y=1.02, x=1),
         
-        # DATE AXIS CONFIGURATION
+        # DATE AXIS & SLIDER
         xaxis=dict(
             type="date",
             rangeslider=dict(visible=True), 
             rangeselector=dict(
                 buttons=list([
-                    dict(count=1, label="1d", step="day", stepmode="backward"),
-                    dict(count=3, label="3d", step="day", stepmode="backward"),
-                    dict(step="all", label="All 5 Days")
+                    dict(count=7, label="1w", step="day", stepmode="backward"),
+                    dict(count=14, label="2w", step="day", stepmode="backward"),
+                    dict(step="all", label="All")
                 ])
             ),
         )
@@ -125,7 +127,7 @@ def create_figure(dataframe):
     return fig
 
 # ------------------------------------------------------------------------------
-# 5. APP LAYOUT
+# 4. APP LAYOUT
 # ------------------------------------------------------------------------------
 app.layout = dbc.Container([
     html.Br(),
@@ -134,7 +136,7 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             html.H2("Male' Weather Analytics", className="text-primary"),
-            html.P("Real-Time 5-Day Forecast", className="text-muted")
+            html.P("Live Data Integration (No API Key Required)", className="text-muted")
         ], width=12)
     ]),
     
@@ -147,13 +149,14 @@ app.layout = dbc.Container([
         ], width=12)
     ]),
 
-    # Footer with Data Source Credit
+    # Footer
     dbc.Row([
         dbc.Col([
             html.Hr(),
             html.Small([
-                "Live Data provided by ",
-                html.A("OpenWeatherMap", href="https://openweathermap.org/", target="_blank")
+                "Data provided by ",
+                html.A("Open-Meteo.com", href="https://open-meteo.com/", target="_blank"),
+                " (Creative Commons Attribution 4.0)"
             ], className="text-muted")
         ], width=12, style={'text-align': 'center', 'margin-top': '20px'})
     ])
@@ -161,7 +164,7 @@ app.layout = dbc.Container([
 ], fluid=True, style={'background-color': '#ffffff', 'min-height': '100vh'})
 
 # ------------------------------------------------------------------------------
-# 6. RUN SERVER
+# 5. RUN SERVER
 # ------------------------------------------------------------------------------
 if __name__ == '__main__':
     app.run_server(debug=True)
