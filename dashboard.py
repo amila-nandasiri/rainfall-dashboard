@@ -65,9 +65,23 @@ if not df.empty:
         ), secondary_y=True
     )
 
-    # Add "Today" Reference Line
-    today_date = pd.Timestamp.now().strftime('%Y-%m-%d')
-    fig.add_vline(x=today_date, line_dash="dash", line_color="gray", annotation_text="Today")
+    # --- FIX STARTS HERE ---
+    # We use a Pandas Timestamp (not a string) to be safe
+    today_date = pd.Timestamp.now().normalize()
+    
+    # 1. Draw the vertical line (Without text)
+    fig.add_vline(x=today_date, line_dash="dash", line_color="gray")
+
+    # 2. Add the text label separately (This avoids the crash)
+    fig.add_annotation(
+        x=today_date, 
+        y=1.05,             # Position slightly above the graph
+        yref="paper",       # Use 'paper' coordinates for Y
+        text="Today", 
+        showarrow=False,
+        font=dict(color="gray", size=10)
+    )
+    # --- FIX ENDS HERE ---
 
     # Clean Light Mode Styling
     fig.update_layout(
@@ -75,11 +89,11 @@ if not df.empty:
         template="plotly_white",  # Built-in clean light theme
         hovermode="x unified",
         height=600,
-        legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"),
+        legend=dict(orientation="h", y=1.15, x=0.5, xanchor="center"),
         
         # Footer Credit
         annotations=[dict(
-            x=0.5, y=-0.15, xref='paper', yref='paper',
+            x=0.5, y=-0.2, xref='paper', yref='paper',
             text="Data Source: <a href='https://open-meteo.com/'>Open-Meteo API</a> (Free License)",
             showarrow=False, font=dict(size=12, color="gray")
         )]
