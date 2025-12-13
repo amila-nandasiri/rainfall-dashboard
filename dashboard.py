@@ -1,69 +1,111 @@
 import requests
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datetime import datetime
 
 # --- CONFIGURATION ---
-# We will fetch data for two locations to make the dashboard impressive
 LOCATIONS = {
     "Male'": {"lat": 4.1755, "lon": 73.5093},
-    "Addu City (Gan)": {"lat": -0.6931, "lon": 73.1585}
+    "Addu City": {"lat": -0.6931, "lon": 73.1585}
 }
 
-# --- FUNCTION TO GET DATA ---
-def get_rainfall_data(city_name, lat, lon):
-    # Fetch last 90 days of data + 3 days forecast
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum&past_days=90&forecast_days=3&timezone=auto"
+# --- 1. FETCH DATA ---
+def get_weather_data(lat, lon):
+    # Fetch 90 days history + 7 days forecast
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max&past_days=90&forecast_days=7&timezone=auto"
+    resp = requests.get(url).json()
     
-    response = requests.get(url)
-    data = response.json()
-    
-    # Extract the daily data
-    df = pd.DataFrame({
-        'Date': data['daily']['time'],
-        'Rainfall_mm': data['daily']['precipitation_sum'],
-        'City': city_name
+    return pd.DataFrame({
+        'Date': resp['daily']['time'],
+        'Rain': resp['daily']['precipitation_sum'],
+        'Temp': resp['daily']['temperature_2m_max']
     })
-    return df
 
-# --- MAIN EXECUTION ---
-print("Fetching data...")
-df_male = get_rainfall_data("Male'", LOCATIONS["Male'"]["lat"], LOCATIONS["Male'"]["lon"])
-df_gan = get_rainfall_data("Addu City", LOCATIONS["Addu City (Gan)"]["lat"], LOCATIONS["Addu City (Gan)"]["lon"])
+print("Fetching Weather Data...")
+df_male = get_weather_data(LOCATIONS["Male'"]["lat"], LOCATIONS["Male'"]["lon"])
+df_addu = get_weather_data(LOCATIONS["Addu City"]["lat"], LOCATIONS["Addu City"]["lon"])
 
-# Combine both datasets
-df_combined = pd.concat([df_male, df_gan])
+# --- 2. BUILD THE DASHBOARD (GRID LAYOUT) ---
+# We create a grid: Top row for "KPI Cards", Middle for Main Chart, Bottom for Comparison
+fig = make_subplots(
+    rows=3, cols=2,
+    specs=[
+        [{"type": "indicator"}, {"type": "indicator"}], # Row 1: Big Numbers
+        [{"colspan": 2, "type": "xy"}, None],           # Row 2: Main Graph (Spans both cols)
+        [{"colspan": 2, "type": "xy"}, None]            # Row 3: Temp Comparison
+    ],
+    vertical_spacing=0.08,
+    subplot_titles=("Total Rainfall (Last 90 Days - Male')", "Max Temp Today (Male')", 
+                    "Daily Rainfall & Trend", "Temperature Comparison (Male' vs Addu)")
+)
 
-# --- VISUALIZATION ---
-print("Generating chart...")
-fig = px.bar(df_combined, x='Date', y='Rainfall_mm', 
-             color='City', 
-             barmode='group',
-             title="Maldives Rainfall Comparison: Male' vs. Addu City (Last 90 Days)",
-             labels={'Rainfall_mm': 'Precipitation (mm)'},
-             color_discrete_map={"Male'": "#00CC96", "Addu City": "#636EFA"})
+# --- ROW 1: KPI INDICATORS ---
+# KPI 1: Total Rainfall (Male')
+total_rain_male = df_male['Rain'].sum()
+fig.add_trace(go.Indicator(
+    mode="number+delta",
+    value=total_rain_male,
+    title={"text": "Total Rain (mm)"},
+    number={'suffix': " mm", 'font': {'color': '#00cc96'}},
+    delta={'position': "bottom", 'reference': 300, 'relative': False}, # Dummy reference for fun
+    domain={'row': 0, 'column': 0}
+), row=1, col=1)
 
-# Polish the layout
+# KPI 2: Max Temp Today
+temp_today = df_male.iloc[-7]['Temp'] # Approximate 'today' based on forecast index
+fig.add_trace(go.Indicator(
+    mode="number",
+    value=temp_today,
+    title={"text": "Max Temp Today"},
+    number={'suffix': " °C", 'font': {'color': '#EF553B'}},
+    domain={'row': 0, 'column': 1}
+), row=1, col=2)
+
+# --- ROW 2: MAIN RAINFALL CHART (Interactive) ---
+# Bar Chart for Rain
+fig.add_trace(go.Bar(
+    x=df_male['Date'], y=df_male['Rain'],
+    name="Rainfall (Male')",
+    marker_color='#00cc96',
+    opacity=0.8
+), row=2, col=1)
+
+# Line Chart for Trend
+fig.add_trace(go.Scatter(
+    x=df_male['Date'], y=df_male['Rain'].rolling(7).mean(),
+    name="7-Day Trend",
+    line=dict(color='white', width=2, dash='dot')
+), row=2, col=1)
+
+# --- ROW 3: COMPARISON (Male' vs Addu) ---
+fig.add_trace(go.Scatter(
+    x=df_male['Date'], y=df_male['Temp'],
+    name="Temp (Male')",
+    line=dict(color='#00cc96')
+), row=3, col=1)
+
+fig.add_trace(go.Scatter(
+    x=df_addu['Date'], y=df_addu['Temp'],
+    name="Temp (Addu)",
+    line=dict(color='#636EFA')
+), row=3, col=1)
+
+# --- 3. STYLING (Dark Mode like the Video) ---
 fig.update_layout(
     template="plotly_dark",
-    plot_bgcolor='rgba(0,0,0,0)',
-    paper_bgcolor='rgba(0,0,0,0)',
-    xaxis_title="Date",
-    yaxis_title="Rainfall (mm)",
-    legend_title="Location",
-    hovermode="x unified"
+    height=900,  # Tall dashboard
+    title_text="<b>MALDIVES WEATHER ANALYTICS</b>",
+    title_x=0.5, # Center title
+    font=dict(family="Arial", size=12),
+    showlegend=True,
+    # The Slider! This mimics the video's interactivity
+    xaxis2=dict(
+        rangeslider=dict(visible=True),
+        type="date"
+    )
 )
 
-# Add a timestamp so users know when it was last updated
-last_updated = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
-fig.add_annotation(
-    text=f"Last Updated: {last_updated} | Data Source: Open-Meteo API",
-    xref="paper", yref="paper",
-    x=0, y=-0.2, showarrow=False,
-    font=dict(size=10, color="gray")
-)
-
-# --- SAVE AS HTML ---
+# --- 4. EXPORT ---
 fig.write_html("index.html")
-print("Done! index.html created.")
+print("Dashboard Generated: index.html")
