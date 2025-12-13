@@ -1,0 +1,35 @@
+name: Update Weather Dashboard
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Runs every hour
+  workflow_dispatch:     # Allows manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:         # IMPORTANT: Gives permission to write the index.html file
+      contents: write
+      
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate Dashboard
+        run: python dashboard.py
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Auto-update weather dashboard" || echo "No changes to commit"
+          git push
