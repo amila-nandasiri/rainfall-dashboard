@@ -1,111 +1,167 @@
-import requests
-import pandas as pd
+import dash
+from dash import dcc, html
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime
+import pandas as pd
+import dash_bootstrap_components as dbc
+import requests
 
-# --- CONFIGURATION ---
-LOCATIONS = {
-    "Male'": {"lat": 4.1755, "lon": 73.5093},
-    "Addu City": {"lat": -0.6931, "lon": 73.1585}
-}
+# ------------------------------------------------------------------------------
+# 1. CONFIGURATION & API SETUP
+# ------------------------------------------------------------------------------
+API_KEY = "YOUR_OPENWEATHERMAP_API_KEY_HERE"  # <--- PASTE YOUR KEY HERE
+CITY = "Male"
+LAT = "4.1755"  # Latitude for Male', Maldives
+LON = "73.5093" # Longitude for Male', Maldives
 
-# --- 1. FETCH DATA ---
-def get_weather_data(lat, lon):
-    # Fetch 90 days history + 7 days forecast
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=precipitation_sum,temperature_2m_max&past_days=90&forecast_days=7&timezone=auto"
-    resp = requests.get(url).json()
+# ------------------------------------------------------------------------------
+# 2. DATA PROCESSING (LIVE API ONLY)
+# ------------------------------------------------------------------------------
+
+def get_data():
+    # We are now ONLY fetching live forecast data (approx 5 days / 3-hour intervals)
+    url = f"https://api.openweathermap.org/data/2.5/forecast?lat={LAT}&lon={LON}&appid={API_KEY}&units=metric"
     
-    return pd.DataFrame({
-        'Date': resp['daily']['time'],
-        'Rain': resp['daily']['precipitation_sum'],
-        'Temp': resp['daily']['temperature_2m_max']
-    })
+    forecast_data = []
+    try:
+        response = requests.get(url)
+        data = response.json()
+        
+        if response.status_code == 200:
+            for item in data['list']:
+                forecast_data.append({
+                    'Date': pd.to_datetime(item['dt_txt']),
+                    'Male_Rainfall': item.get('rain', {}).get('3h', 0), # Rain volume for last 3h
+                    'Male_Temperature': item['main']['temp']
+                })
+        else:
+            print(f"API Error: {data.get('message', 'Unknown error')}")
+            
+    except Exception as e:
+        print(f"Connection Error: {e}")
 
-print("Fetching Weather Data...")
-df_male = get_weather_data(LOCATIONS["Male'"]["lat"], LOCATIONS["Male'"]["lon"])
-df_addu = get_weather_data(LOCATIONS["Addu City"]["lat"], LOCATIONS["Addu City"]["lon"])
+    df = pd.DataFrame(forecast_data)
+    
+    # Sort just in case
+    if not df.empty:
+        df = df.sort_values(by='Date')
+    
+    return df
 
-# --- 2. BUILD THE DASHBOARD (GRID LAYOUT) ---
-# We create a grid: Top row for "KPI Cards", Middle for Main Chart, Bottom for Comparison
-fig = make_subplots(
-    rows=3, cols=2,
-    specs=[
-        [{"type": "indicator"}, {"type": "indicator"}], # Row 1: Big Numbers
-        [{"colspan": 2, "type": "xy"}, None],           # Row 2: Main Graph (Spans both cols)
-        [{"colspan": 2, "type": "xy"}, None]            # Row 3: Temp Comparison
-    ],
-    vertical_spacing=0.08,
-    subplot_titles=("Total Rainfall (Last 90 Days - Male')", "Max Temp Today (Male')", 
-                    "Daily Rainfall & Trend", "Temperature Comparison (Male' vs Addu)")
-)
+# Load Data once on startup
+df = get_data()
 
-# --- ROW 1: KPI INDICATORS ---
-# KPI 1: Total Rainfall (Male')
-total_rain_male = df_male['Rain'].sum()
-fig.add_trace(go.Indicator(
-    mode="number+delta",
-    value=total_rain_male,
-    title={"text": "Total Rain (mm)"},
-    number={'suffix': " mm", 'font': {'color': '#00cc96'}},
-    delta={'position': "bottom", 'reference': 300, 'relative': False}, # Dummy reference for fun
-    domain={'row': 0, 'column': 0}
-), row=1, col=1)
+# ------------------------------------------------------------------------------
+# 3. APP SETUP (Light Mode)
+# ------------------------------------------------------------------------------
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+server = app.server
 
-# KPI 2: Max Temp Today
-temp_today = df_male.iloc[-7]['Temp'] # Approximate 'today' based on forecast index
-fig.add_trace(go.Indicator(
-    mode="number",
-    value=temp_today,
-    title={"text": "Max Temp Today"},
-    number={'suffix': " °C", 'font': {'color': '#EF553B'}},
-    domain={'row': 0, 'column': 1}
-), row=1, col=2)
+# ------------------------------------------------------------------------------
+# 4. FIGURE CREATION
+# ------------------------------------------------------------------------------
 
-# --- ROW 2: MAIN RAINFALL CHART (Interactive) ---
-# Bar Chart for Rain
-fig.add_trace(go.Bar(
-    x=df_male['Date'], y=df_male['Rain'],
-    name="Rainfall (Male')",
-    marker_color='#00cc96',
-    opacity=0.8
-), row=2, col=1)
+def create_figure(dataframe):
+    if dataframe.empty:
+        return go.Figure().update_layout(
+            title="No Data Available. Please check your API Key.",
+            plot_bgcolor='white'
+        )
 
-# Line Chart for Trend
-fig.add_trace(go.Scatter(
-    x=df_male['Date'], y=df_male['Rain'].rolling(7).mean(),
-    name="7-Day Trend",
-    line=dict(color='white', width=2, dash='dot')
-), row=2, col=1)
+    # Create figure with secondary y-axis (Left: Rain, Right: Temp)
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-# --- ROW 3: COMPARISON (Male' vs Addu) ---
-fig.add_trace(go.Scatter(
-    x=df_male['Date'], y=df_male['Temp'],
-    name="Temp (Male')",
-    line=dict(color='#00cc96')
-), row=3, col=1)
-
-fig.add_trace(go.Scatter(
-    x=df_addu['Date'], y=df_addu['Temp'],
-    name="Temp (Addu)",
-    line=dict(color='#636EFA')
-), row=3, col=1)
-
-# --- 3. STYLING (Dark Mode like the Video) ---
-fig.update_layout(
-    template="plotly_dark",
-    height=900,  # Tall dashboard
-    title_text="<b>MALDIVES WEATHER ANALYTICS</b>",
-    title_x=0.5, # Center title
-    font=dict(family="Arial", size=12),
-    showlegend=True,
-    # The Slider! This mimics the video's interactivity
-    xaxis2=dict(
-        rangeslider=dict(visible=True),
-        type="date"
+    # 1. Rainfall (Bar Chart)
+    fig.add_trace(
+        go.Bar(
+            x=dataframe['Date'], 
+            y=dataframe['Male_Rainfall'], 
+            name="Rainfall (mm/3h)",
+            marker_color='#50C878', # Mint Green
+            opacity=0.7
+        ),
+        secondary_y=False,
     )
-)
 
-# --- 4. EXPORT ---
-fig.write_html("index.html")
-print("Dashboard Generated: index.html")
+    # 2. Temperature (Line Chart)
+    fig.add_trace(
+        go.Scatter(
+            x=dataframe['Date'], 
+            y=dataframe['Male_Temperature'], 
+            name="Temperature (°C)",
+            line=dict(color='#007BFF', width=3),
+            mode='lines+markers' # Markers added so you can see the 3h points clearly
+        ),
+        secondary_y=True,
+    )
+
+    # Layout Updates
+    fig.update_layout(
+        title="Male' Weather Forecast (Next 5 Days)",
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        font_color='black',
+        height=500,
+        legend=dict(orientation="h", y=1.02, x=1),
+        
+        # DATE AXIS CONFIGURATION
+        xaxis=dict(
+            type="date",
+            rangeslider=dict(visible=True), 
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=1, label="1d", step="day", stepmode="backward"),
+                    dict(count=3, label="3d", step="day", stepmode="backward"),
+                    dict(step="all", label="All 5 Days")
+                ])
+            ),
+        )
+    )
+
+    # Axis Formatting
+    fig.update_yaxes(title_text="Rainfall (mm)", secondary_y=False, showgrid=False)
+    fig.update_yaxes(title_text="Temperature (°C)", secondary_y=True, showgrid=True, gridcolor='#eee')
+    
+    return fig
+
+# ------------------------------------------------------------------------------
+# 5. APP LAYOUT
+# ------------------------------------------------------------------------------
+app.layout = dbc.Container([
+    html.Br(),
+    
+    # Header
+    dbc.Row([
+        dbc.Col([
+            html.H2("Male' Weather Analytics", className="text-primary"),
+            html.P("Real-Time 5-Day Forecast", className="text-muted")
+        ], width=12)
+    ]),
+    
+    html.Hr(),
+
+    # Graph
+    dbc.Row([
+        dbc.Col([
+            dcc.Graph(figure=create_figure(df), config={'displayModeBar': False})
+        ], width=12)
+    ]),
+
+    # Footer with Data Source Credit
+    dbc.Row([
+        dbc.Col([
+            html.Hr(),
+            html.Small([
+                "Live Data provided by ",
+                html.A("OpenWeatherMap", href="https://openweathermap.org/", target="_blank")
+            ], className="text-muted")
+        ], width=12, style={'text-align': 'center', 'margin-top': '20px'})
+    ])
+
+], fluid=True, style={'background-color': '#ffffff', 'min-height': '100vh'})
+
+# ------------------------------------------------------------------------------
+# 6. RUN SERVER
+# ------------------------------------------------------------------------------
+if __name__ == '__main__':
+    app.run_server(debug=True)
