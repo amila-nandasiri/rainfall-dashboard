@@ -37,7 +37,7 @@ def get_weather_data():
         return pd.DataFrame()
 
 # ------------------------------------------------------------------------------
-# 2. CREATE DASHBOARD (DEEPMIND / DARK MODE STYLE)
+# 2. CREATE DASHBOARD (DEEPMIND DARK THEME)
 # ------------------------------------------------------------------------------
 df = get_weather_data()
 
@@ -45,21 +45,20 @@ if not df.empty:
     # Create Figure with Dual Axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # --- STYLE CONFIGURATION ---
-    # Colors based on the "DeepMind" aesthetic
-    BG_COLOR = "#101010"       # Deep charcoal/black
-    TEXT_COLOR = "#E0E0E0"     # Off-white for text
-    BAR_COLOR = "#8AB4F8"      # Google Light Blue (Rain)
-    LINE_COLOR = "#F28B82"     # Soft Red/Coral (Temp) - High contrast against dark
-    GRID_COLOR = "#333333"     # Subtle grid lines
+    # --- THEME CONFIGURATION ---
+    BG_COLOR = "#101010"       # Deep Charcoal (DeepMind Background)
+    TEXT_COLOR = "#E0E0E0"     # Off-white text
+    RAIN_COLOR = "#8AB4F8"     # Google Blue (Rain)
+    TEMP_COLOR = "#F28B82"     # Soft Coral Red (Temp)
+    GRID_COLOR = "#333333"     # Subtle Grid
 
     # 1. Plot Rainfall (Bar Chart)
     fig.add_trace(
         go.Bar(
             x=df['Date'], y=df['Rain'],
             name="Rainfall (mm)",
-            marker_color=BAR_COLOR,
-            marker_line_width=0, # Clean, no borders
+            marker_color=RAIN_COLOR,
+            marker_line_width=0,
             opacity=0.9
         ), secondary_y=False
     )
@@ -69,19 +68,19 @@ if not df.empty:
         go.Scatter(
             x=df['Date'], y=df['Temp'],
             name="Temperature (°C)",
-            line=dict(color=LINE_COLOR, width=3),
+            line=dict(color=TEMP_COLOR, width=3),
             mode='lines+markers',
-            marker=dict(size=6, color=BG_COLOR, line=dict(width=2, color=LINE_COLOR)) # Hollow circle effect
+            marker=dict(size=6, color=BG_COLOR, line=dict(width=2, color=TEMP_COLOR))
         ), secondary_y=True
     )
 
-    # --- VISUALS & LAYOUT ---
+    # --- FIX RETAINED HERE ---
     today_date = pd.Timestamp.now().normalize()
-
-    # Vertical Line for "Today"
-    fig.add_vline(x=today_date, line_dash="dot", line_color="#5f6368", line_width=1)
     
-    # "Today" Text Label
+    # Draw Vertical Line
+    fig.add_vline(x=today_date, line_dash="dot", line_color="#5f6368", line_width=1)
+
+    # Add Text Label Separately
     fig.add_annotation(
         x=today_date, y=1.05, yref="paper",
         text="TODAY",
@@ -89,14 +88,14 @@ if not df.empty:
         font=dict(color="#9AA0A6", size=10, family="Roboto, Arial, sans-serif")
     )
 
+    # --- STYLING & LAYOUT ---
     fig.update_layout(
         title=dict(
             text="<b>Male' City Weather</b>",
             font=dict(size=24, color="white", family="Roboto, sans-serif"),
-            x=0.05, # Align left like the screenshot
+            x=0.05, # Left align
             y=0.95
         ),
-        # Dark Theme Settings
         template="plotly_dark",
         paper_bgcolor=BG_COLOR,
         plot_bgcolor=BG_COLOR,
@@ -104,7 +103,6 @@ if not df.empty:
         height=600,
         hovermode="x unified",
         
-        # Legend styling (Top Right, minimal)
         legend=dict(
             orientation="h",
             yanchor="bottom", y=1.02,
@@ -112,16 +110,15 @@ if not df.empty:
             font=dict(size=12, color="#9AA0A6")
         ),
         
-        # Rangeslider styling to match dark theme
+        # Rangeslider styling for dark theme
         xaxis=dict(
             type="date",
             showgrid=False,
-            color="#9AA0A6",
-            rangeslider=dict(visible=True, bgcolor=BG_COLOR, bordercolor=GRID_COLOR),
+            rangeslider=dict(visible=True, bgcolor=BG_COLOR, bordercolor=GRID_COLOR, thickness=0.05),
         )
     )
 
-    # Customize Axis Grids (Subtle)
+    # Customize Axis Grids
     fig.update_yaxes(
         title_text="Rainfall (mm)", 
         secondary_y=False, 
@@ -134,10 +131,10 @@ if not df.empty:
         title_text="Temperature (°C)", 
         secondary_y=True, 
         showgrid=False, 
-        color=LINE_COLOR # Match the axis text color to the line
+        color=TEMP_COLOR
     )
 
-    # Footer Credit (Styled)
+    # Footer Credit
     fig.add_annotation(
         x=0.5, y=-0.25, xref='paper', yref='paper',
         text="Data Source: <a href='https://open-meteo.com/' style='color: #8AB4F8;'>Open-Meteo API</a>",
