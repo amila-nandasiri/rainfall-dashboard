@@ -37,7 +37,7 @@ def get_weather_data():
         return pd.DataFrame()
 
 # ------------------------------------------------------------------------------
-# 2. CREATE DASHBOARD (DEEPMIND DARK THEME)
+# 2. CREATE DASHBOARD
 # ------------------------------------------------------------------------------
 df = get_weather_data()
 
@@ -45,106 +45,66 @@ if not df.empty:
     # Create Figure with Dual Axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # --- THEME CONFIGURATION ---
-    BG_COLOR = "#101010"       # Deep Charcoal (DeepMind Background)
-    TEXT_COLOR = "#E0E0E0"     # Off-white text
-    RAIN_COLOR = "#8AB4F8"     # Google Blue (Rain)
-    TEMP_COLOR = "#F28B82"     # Soft Coral Red (Temp)
-    GRID_COLOR = "#333333"     # Subtle Grid
-
-    # 1. Plot Rainfall (Bar Chart)
+    # Plot Rainfall (Bar Chart)
     fig.add_trace(
         go.Bar(
             x=df['Date'], y=df['Rain'],
             name="Rainfall (mm)",
-            marker_color=RAIN_COLOR,
-            marker_line_width=0,
-            opacity=0.9
+            marker_color='#4BC0C0',  # Clean Teal/Cyan for light mode
+            opacity=0.7
         ), secondary_y=False
     )
 
-    # 2. Plot Temperature (Line Chart)
+    # Plot Temperature (Line Chart)
     fig.add_trace(
         go.Scatter(
             x=df['Date'], y=df['Temp'],
             name="Temperature (°C)",
-            line=dict(color=TEMP_COLOR, width=3),
-            mode='lines+markers',
-            marker=dict(size=6, color=BG_COLOR, line=dict(width=2, color=TEMP_COLOR))
+            line=dict(color='#FF6384', width=3), # Nice Red/Pink for temp
+            mode='lines+markers'
         ), secondary_y=True
     )
 
-    # --- FIX RETAINED HERE ---
+    # --- FIX STARTS HERE ---
+    # We use a Pandas Timestamp (not a string) to be safe
     today_date = pd.Timestamp.now().normalize()
     
-    # Draw Vertical Line
-    fig.add_vline(x=today_date, line_dash="dot", line_color="#5f6368", line_width=1)
+    # 1. Draw the vertical line (Without text)
+    fig.add_vline(x=today_date, line_dash="dash", line_color="gray")
 
-    # Add Text Label Separately
+    # 2. Add the text label separately (This avoids the crash)
     fig.add_annotation(
-        x=today_date, y=1.05, yref="paper",
-        text="TODAY",
+        x=today_date, 
+        y=1.05,             # Position slightly above the graph
+        yref="paper",       # Use 'paper' coordinates for Y
+        text="Today", 
         showarrow=False,
-        font=dict(color="#9AA0A6", size=10, family="Roboto, Arial, sans-serif")
+        font=dict(color="gray", size=10)
     )
+    # --- FIX ENDS HERE ---
 
-    # --- STYLING & LAYOUT ---
+    # Clean Light Mode Styling
     fig.update_layout(
-        title=dict(
-            text="<b>Male' City Weather</b>",
-            font=dict(size=24, color="white", family="Roboto, sans-serif"),
-            x=0.05, # Left align
-            y=0.95
-        ),
-        template="plotly_dark",
-        paper_bgcolor=BG_COLOR,
-        plot_bgcolor=BG_COLOR,
-        font=dict(family="Roboto, sans-serif", color=TEXT_COLOR),
-        height=600,
+        title="<b>Male' City Weather Dashboard</b><br><sup>Past 14 Days + 5 Day Forecast</sup>",
+        template="plotly_white",  # Built-in clean light theme
         hovermode="x unified",
+        height=600,
+        legend=dict(orientation="h", y=1.15, x=0.5, xanchor="center"),
         
-        legend=dict(
-            orientation="h",
-            yanchor="bottom", y=1.02,
-            xanchor="right", x=1,
-            font=dict(size=12, color="#9AA0A6")
-        ),
-        
-        # Rangeslider styling for dark theme
-        xaxis=dict(
-            type="date",
-            showgrid=False,
-            rangeslider=dict(visible=True, bgcolor=BG_COLOR, bordercolor=GRID_COLOR, thickness=0.05),
-        )
+        # Footer Credit
+        annotations=[dict(
+            x=0.5, y=-0.2, xref='paper', yref='paper',
+            text="Data Source: <a href='https://open-meteo.com/'>Open-Meteo API</a> (Free License)",
+            showarrow=False, font=dict(size=12, color="gray")
+        )]
     )
 
-    # Customize Axis Grids
-    fig.update_yaxes(
-        title_text="Rainfall (mm)", 
-        secondary_y=False, 
-        showgrid=True, 
-        gridcolor=GRID_COLOR, 
-        zerolinecolor=GRID_COLOR,
-        color="#9AA0A6"
-    )
-    fig.update_yaxes(
-        title_text="Temperature (°C)", 
-        secondary_y=True, 
-        showgrid=False, 
-        color=TEMP_COLOR
-    )
-
-    # Footer Credit
-    fig.add_annotation(
-        x=0.5, y=-0.25, xref='paper', yref='paper',
-        text="Data Source: <a href='https://open-meteo.com/' style='color: #8AB4F8;'>Open-Meteo API</a>",
-        showarrow=False, 
-        font=dict(size=11, color="#5f6368")
-    )
+    # Axis Titles
+    fig.update_yaxes(title_text="Rainfall (mm)", secondary_y=False, showgrid=False)
+    fig.update_yaxes(title_text="Max Temperature (°C)", secondary_y=True, showgrid=True, gridcolor='#eee')
 
     # Save as HTML
     fig.write_html("index.html")
     print("Dashboard updated successfully!")
-
 else:
     print("Failed to fetch data.")
