@@ -37,7 +37,7 @@ def get_weather_data():
         return pd.DataFrame()
 
 # ------------------------------------------------------------------------------
-# 2. CREATE DASHBOARD
+# 2. CREATE DASHBOARD (DEEPMIND / DARK MODE STYLE)
 # ------------------------------------------------------------------------------
 df = get_weather_data()
 
@@ -45,66 +45,109 @@ if not df.empty:
     # Create Figure with Dual Axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Plot Rainfall (Bar Chart)
+    # --- STYLE CONFIGURATION ---
+    # Colors based on the "DeepMind" aesthetic
+    BG_COLOR = "#101010"       # Deep charcoal/black
+    TEXT_COLOR = "#E0E0E0"     # Off-white for text
+    BAR_COLOR = "#8AB4F8"      # Google Light Blue (Rain)
+    LINE_COLOR = "#F28B82"     # Soft Red/Coral (Temp) - High contrast against dark
+    GRID_COLOR = "#333333"     # Subtle grid lines
+
+    # 1. Plot Rainfall (Bar Chart)
     fig.add_trace(
         go.Bar(
             x=df['Date'], y=df['Rain'],
             name="Rainfall (mm)",
-            marker_color='#4BC0C0',  # Clean Teal/Cyan for light mode
-            opacity=0.7
+            marker_color=BAR_COLOR,
+            marker_line_width=0, # Clean, no borders
+            opacity=0.9
         ), secondary_y=False
     )
 
-    # Plot Temperature (Line Chart)
+    # 2. Plot Temperature (Line Chart)
     fig.add_trace(
         go.Scatter(
             x=df['Date'], y=df['Temp'],
             name="Temperature (°C)",
-            line=dict(color='#FF6384', width=3), # Nice Red/Pink for temp
-            mode='lines+markers'
+            line=dict(color=LINE_COLOR, width=3),
+            mode='lines+markers',
+            marker=dict(size=6, color=BG_COLOR, line=dict(width=2, color=LINE_COLOR)) # Hollow circle effect
         ), secondary_y=True
     )
 
-    # --- FIX STARTS HERE ---
-    # We use a Pandas Timestamp (not a string) to be safe
+    # --- VISUALS & LAYOUT ---
     today_date = pd.Timestamp.now().normalize()
+
+    # Vertical Line for "Today"
+    fig.add_vline(x=today_date, line_dash="dot", line_color="#5f6368", line_width=1)
     
-    # 1. Draw the vertical line (Without text)
-    fig.add_vline(x=today_date, line_dash="dash", line_color="gray")
-
-    # 2. Add the text label separately (This avoids the crash)
+    # "Today" Text Label
     fig.add_annotation(
-        x=today_date, 
-        y=1.05,             # Position slightly above the graph
-        yref="paper",       # Use 'paper' coordinates for Y
-        text="Today", 
+        x=today_date, y=1.05, yref="paper",
+        text="TODAY",
         showarrow=False,
-        font=dict(color="gray", size=10)
+        font=dict(color="#9AA0A6", size=10, family="Roboto, Arial, sans-serif")
     )
-    # --- FIX ENDS HERE ---
 
-    # Clean Light Mode Styling
     fig.update_layout(
-        title="<b>Male' City Weather Dashboard</b><br><sup>Past 14 Days + 5 Day Forecast</sup>",
-        template="plotly_white",  # Built-in clean light theme
-        hovermode="x unified",
+        title=dict(
+            text="<b>Male' City Weather</b>",
+            font=dict(size=24, color="white", family="Roboto, sans-serif"),
+            x=0.05, # Align left like the screenshot
+            y=0.95
+        ),
+        # Dark Theme Settings
+        template="plotly_dark",
+        paper_bgcolor=BG_COLOR,
+        plot_bgcolor=BG_COLOR,
+        font=dict(family="Roboto, sans-serif", color=TEXT_COLOR),
         height=600,
-        legend=dict(orientation="h", y=1.15, x=0.5, xanchor="center"),
+        hovermode="x unified",
         
-        # Footer Credit
-        annotations=[dict(
-            x=0.5, y=-0.2, xref='paper', yref='paper',
-            text="Data Source: <a href='https://open-meteo.com/'>Open-Meteo API</a> (Free License)",
-            showarrow=False, font=dict(size=12, color="gray")
-        )]
+        # Legend styling (Top Right, minimal)
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", y=1.02,
+            xanchor="right", x=1,
+            font=dict(size=12, color="#9AA0A6")
+        ),
+        
+        # Rangeslider styling to match dark theme
+        xaxis=dict(
+            type="date",
+            showgrid=False,
+            color="#9AA0A6",
+            rangeslider=dict(visible=True, bgcolor=BG_COLOR, bordercolor=GRID_COLOR),
+        )
     )
 
-    # Axis Titles
-    fig.update_yaxes(title_text="Rainfall (mm)", secondary_y=False, showgrid=False)
-    fig.update_yaxes(title_text="Max Temperature (°C)", secondary_y=True, showgrid=True, gridcolor='#eee')
+    # Customize Axis Grids (Subtle)
+    fig.update_yaxes(
+        title_text="Rainfall (mm)", 
+        secondary_y=False, 
+        showgrid=True, 
+        gridcolor=GRID_COLOR, 
+        zerolinecolor=GRID_COLOR,
+        color="#9AA0A6"
+    )
+    fig.update_yaxes(
+        title_text="Temperature (°C)", 
+        secondary_y=True, 
+        showgrid=False, 
+        color=LINE_COLOR # Match the axis text color to the line
+    )
+
+    # Footer Credit (Styled)
+    fig.add_annotation(
+        x=0.5, y=-0.25, xref='paper', yref='paper',
+        text="Data Source: <a href='https://open-meteo.com/' style='color: #8AB4F8;'>Open-Meteo API</a>",
+        showarrow=False, 
+        font=dict(size=11, color="#5f6368")
+    )
 
     # Save as HTML
     fig.write_html("index.html")
     print("Dashboard updated successfully!")
+
 else:
     print("Failed to fetch data.")
